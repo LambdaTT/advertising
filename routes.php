@@ -35,10 +35,10 @@ class Advertising extends WebService
       ]);
 
       $params = [
-        'ds_key' => $request->route()->params['key']
+        'ds_key' => $request->getRoute()->params['key']
       ];
 
-      $data = $this->getService(self::SERVICES['advertisement'])->get(['ds_key' => $paramKey]);
+      $data = $this->getService(self::SERVICES['advertisement'])->get($params);
       if (empty($data)) return $this->response->withStatus(404);
 
       return $this->response
@@ -66,7 +66,7 @@ class Advertising extends WebService
       ]);
 
       $params = [
-        'ds_key' => $request->route()->params['key']
+        'ds_key' => $request->getRoute()->params['key']
       ];
 
       $adv = $this->getService(self::SERVICES['advertisement'])->get($params);
@@ -116,7 +116,7 @@ class Advertising extends WebService
 
       $data = $request->getBody();
       $params = [
-        'ds_key' => $request->route()->params['key']
+        'ds_key' => $request->getRoute()->params['key']
       ];
 
       // Update Advertisement
@@ -144,7 +144,7 @@ class Advertising extends WebService
       ]);
 
       $params = [
-        'ds_key' => $request->route()->params['key']
+        'ds_key' => $request->getRoute()->params['key']
       ];
 
       $rows = $this->getService(self::SERVICES['advertisement'])->remove($params);
@@ -166,7 +166,7 @@ class Advertising extends WebService
       ]);
 
       $params = [
-        'ds_key' => $request->route()->params['advertisementKey']
+        'ds_key' => $request->getRoute()->params['advertisementKey']
       ];
 
       $adv = $this->getService(self::SERVICES['advertisement'])->get($params);
@@ -191,7 +191,7 @@ class Advertising extends WebService
       ]);
 
       $params = [
-        'ds_key' => $request->route()->params['advertisementKey']
+        'ds_key' => $request->getRoute()->params['advertisementKey']
       ];
 
       $adv = $this->getService(self::SERVICES['advertisement'])->get($params);

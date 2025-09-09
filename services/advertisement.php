@@ -3,6 +3,7 @@
 namespace Advertising\Services;
 
 use SplitPHP\Service;
+use SplitPHP\Utils;
 use SplitPHP\Exceptions\FailedValidation;
 use SplitPHP\Exceptions\NotFound;
 use DateTime;
@@ -127,15 +128,31 @@ class Advertisement extends Service
 
   public function send($adv)
   {
-    // Send Communication
-    $clauses = $this->buildCommunicationFilters($adv->id_adv_advertisement);
-    $recipients = $this->getCommunicationRecipients($clauses);
+    // Build Filters and get Recipients:
+    $targetFilters = $this->buildFilters($adv->id_adv_advertisement);
+    $recipients = $this->getRecipients($targetFilters);
 
-    if ($adv->ds_notify && str_contains($adv->ds_notify, 'A')) $appCount = $this->sendAppCommunication($adv, $recipients);
-    if ($adv->ds_notify && str_contains($adv->ds_notify, 'E')) $emailCount = $this->sendEmailCommunication($adv, $recipients);
+    // Execute each media channel's sending method:
+    $this->getDao('ADV_MEDIACHANNEL')
+      ->filter('adId')->equalsTo($adv->id_adv_advertisement)
+      ->fetch(
+        function ($media) use ($adv, $recipients) {
+          if (!empty($media->ds_service_uri) && !empty($media->ds_service_method)) {
+            return $this->getService($media->ds_service_uri)->{$media->ds_service_method}($adv, $recipients);
+          } elseif (!empty($media->tx_function)) {
+            eval($media->tx_function);
+          } else {
+            throw new Exception("Media Channel '{$media->ds_title}' is not properly configured.");
+          }
+        },
+        "SELECT 
+            med.*
+          FROM `ADV_MEDIACHANNEL` med
+          JOIN `ADV_ADVERTISEMENT_MEDIACHANNEL` adm ON adm.id_adv_mediachannel = med.id_adv_mediachannel
+          WHERE adm.id_adv_advertisement = ?adId?"
+      );
 
-    echo "Campanha '$adv->id_adv_advertisement - $adv->ds_title' enviada com sucesso.\n";
-    return;
+    Utils::printLn("Campanha '$adv->id_adv_advertisement - $adv->ds_title' enviada com sucesso.\n");
   }
 
   public function validateAdvertisement($adv)
@@ -199,15 +216,15 @@ class Advertisement extends Service
 
   // ======= Private Methods =======
 
-  private function buildAdvertisementFilters($advertisementId)
+  private function buildFilters($advertisementId)
   {
     $stdCount = 0;
     $ctmCount = 0;
 
     return [
-      'standart' => $this->buildStdFilters($advertisementId, $stdCount),
+      'standard' => $this->buildStdFilters($advertisementId, $stdCount),
       'custom' => $this->buildCustomFilters($advertisementId, $ctmCount),
-      'standartCount' => $stdCount,
+      'standardCount' => $stdCount,
       'customCount' => $ctmCount,
     ];
   }
@@ -304,9 +321,9 @@ class Advertisement extends Service
     return empty($clauses) ? null : implode(' OR ', $clauses);
   }
 
-  private function getCommunicationRecipients($clauses)
+  private function getRecipients($clauses)
   {
-    $where = $clauses['standart'];
+    $where = $clauses['standard'];
 
     if (!empty($clauses['custom'])) {
       $associateIds = $this->executeCustomClauses($clauses['custom'], $clauses['customCount']);
