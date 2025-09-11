@@ -13,14 +13,11 @@ class Advertising extends Cli
   public function init()
   {
     $this->addCommand('send', function () {
-      $advertisements = $this->getService(self::SERVICES['advertisement'])->list(['dt_next' => '$bgeq|' . date('Y-m-d')]);
+      $advertisements = $this->getService(self::SERVICES['advertisement'])->list(['dt_next' => date('Y-m-d')]);
 
       foreach ($advertisements as $adv) {
-        // Validation
-        if (!$this->getService(self::SERVICES['advertisement'])->validateCommunication($adv)) return;
-
         // Update
-        $this->getService(self::SERVICES['advertisement'])->updNextCommunicationDate($adv);
+        $this->getService(self::SERVICES['advertisement'])->updNextAdvertisementDate($adv);
 
         // Send
         $this->getService(self::SERVICES['advertisement'])->send($adv);

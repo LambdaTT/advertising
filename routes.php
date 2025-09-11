@@ -6,6 +6,7 @@ use SplitPHP\WebService;
 use SplitPHP\Request;
 use SplitPHP\Exceptions\Unauthorized;
 use SplitPHP\Exceptions\NotFound;
+use Exception;
 
 class Advertising extends WebService
 {
@@ -57,24 +58,6 @@ class Advertising extends WebService
       return $this->response
         ->withStatus(200)
         ->withData($this->getService(self::SERVICES['advertisement'])->list($params));
-    });
-
-    $this->addEndpoint('POST', "/v1/advertisement-send/?key?", function (Request $request) {
-      // Auth user login:
-      $this->auth([
-        self::ENTITIES['ADVERTISEMENT'] => 'C'
-      ]);
-
-      $params = [
-        'ds_key' => $request->getRoute()->params['key']
-      ];
-
-      $adv = $this->getService(self::SERVICES['advertisement'])->get($params);
-      if (empty($adv)) throw new NotFound('Não foi possível encontrar a campanha selecionada.');
-
-      return $this->response
-        ->withStatus(201)
-        ->withData($this->getService(self::SERVICES['advertisement'])->send($adv));
     });
 
     $this->addEndpoint('POST', '/v1/advertisement', function (Request $request) {
@@ -158,7 +141,22 @@ class Advertising extends WebService
     // TARGET FILTERS ENDPOINTS:
     ////////////////////////////
 
-    // Get
+    // Get Fields
+    $this->addEndpoint('GET', "/v1/target-fields", function () {
+      // Auth user login:
+      $this->auth(execPermission: 'permission.advertising.view_target_fields');
+
+      $fields = json_decode(file_get_contents(__DIR__ . '/config.json'), true);
+      if (empty($fields) || !isset($fields['target']) || !isset($fields['target']['fields'])) {
+        throw new Exception("Target Filters configuration not found.");
+      }
+
+      return $this->response
+        ->withStatus(200)
+        ->withData($fields['target']['fields']);
+    });
+
+    // Get Values
     $this->addEndpoint('GET', "/v1/target-filters/?advertisementKey?", function (Request $request) {
       // Auth user login:
       $this->auth([
@@ -179,11 +177,7 @@ class Advertising extends WebService
         ->withData($data);
     });
 
-    ///////////////////////////////////
-    // TARGET CUSTOM FILTERS ENDPOINTS:
-    ///////////////////////////////////
-
-    // Get
+    // Get Values
     $this->addEndpoint('GET', "/v1/target-custom-filters/?advertisementKey?", function (Request $request) {
       // Auth user login:
       $this->auth([
@@ -203,9 +197,28 @@ class Advertising extends WebService
         ->withStatus(200)
         ->withData($data);
     });
+
+    //////////////////
+    // MISC ENDPOINTS:
+    //////////////////
+    $this->addEndpoint('POST', "/v1/publish/?key?", function (Request $request) {
+      // Auth user login:
+      $this->auth(execPermission: 'permission.advertising.publish');
+
+      $params = [
+        'ds_key' => $request->getRoute()->params['key']
+      ];
+
+      $adv = $this->getService(self::SERVICES['advertisement'])->get($params);
+      if (empty($adv)) throw new NotFound('Não foi possível encontrar a campanha selecionada.');
+
+      return $this->response
+        ->withStatus(201)
+        ->withData($this->getService(self::SERVICES['advertisement'])->send($adv));
+    });
   }
 
-  private function auth(array $permissions)
+  private function auth(array $tablePermissions = [], ?string $execPermission = null)
   {
     if (!$this->getService('modcontrol/control')->moduleExists('iam')) return;
 
@@ -214,7 +227,13 @@ class Advertising extends WebService
       throw new Unauthorized("Não autorizado.");
 
     // Validate user permissions:
-    $this->getService('iam/permission')
-      ->validatePermissions($permissions);
+    if (!empty($tablePermissions))
+      $this->getService('iam/permission')
+        ->validatePermissions($tablePermissions);
+
+    // Validate execution permissions:
+    if (!empty($execPermission))
+      $this->getService('iam/permission')
+        ->canExecute($execPermission);
   }
 }

@@ -7,7 +7,7 @@ use SplitPHP\Exceptions\NotFound;
 
 class CustomFilter extends Service
 {
-  const ENTITY = "ADV_TARGETFILTER";
+  const ENTITY = "ADV_TARGETCUSTOMFILTER";
   
   public function list($params = [])
   {
@@ -27,7 +27,7 @@ class CustomFilter extends Service
           DATE_FORMAT(ftr.dt_updated, '%d/%m/%Y %T') as dtUpdated, 
           CONCAT(usrc.ds_first_name, ' ', usrc.ds_last_name) as userCreated,
           CONCAT(usru.ds_first_name, ' ', usru.ds_last_name) as userUpdated
-        FROM `ADV_TARGETFILTER` ftr
+        FROM `ADV_TARGETCUSTOMFILTER` ftr
         LEFT JOIN `IAM_USER` usrc ON usrc.id_iam_user = ftr.id_iam_user_created
         LEFT JOIN `IAM_USER` usru ON usru.id_iam_user = ftr.id_iam_user_updated
         JOIN STT_SETTINGS_CUSTOMFIELD cst ON cst.id_stt_settings_customfield = ftr.id_stt_settings_customfield"
@@ -46,7 +46,7 @@ class CustomFilter extends Service
           DATE_FORMAT(ftr.dt_updated, '%d/%m/%Y %T') as dtUpdated, 
           CONCAT(usrc.ds_first_name, ' ', usrc.ds_last_name) as userCreated,
           CONCAT(usru.ds_first_name, ' ', usru.ds_last_name) as userUpdated
-        FROM `ADV_TARGETFILTER` ftr
+        FROM `ADV_TARGETCUSTOMFILTER` ftr
         LEFT JOIN `IAM_USER` usrc ON usrc.id_iam_user = ftr.id_iam_user_created
         LEFT JOIN `IAM_USER` usru ON usru.id_iam_user = ftr.id_iam_user_updated"
       );

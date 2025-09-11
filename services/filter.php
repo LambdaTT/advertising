@@ -3,7 +3,6 @@
 namespace Advertising\Services;
 
 use SplitPHP\Service;
-use SplitPHP\Exceptions\NotFound;
 
 class TargetFilter extends Service
 {
@@ -20,24 +19,7 @@ class TargetFilter extends Service
   {
     return $this->getDao(self::ENTITY)
       ->bindParams($params)
-      ->first(
-        "SELECT 
-          ftr.*,
-          org.ds_title as orgName,
-          wrp.ds_title as wrpName,
-          sts.ds_title as stsName,
-          -- Audit
-          DATE_FORMAT(ftr.dt_created, '%d/%m/%Y %T') as dtCreated, 
-          DATE_FORMAT(ftr.dt_updated, '%d/%m/%Y %T') as dtUpdated, 
-          CONCAT(usrc.ds_first_name, ' ', usrc.ds_last_name) as userCreated,
-          CONCAT(usru.ds_first_name, ' ', usru.ds_last_name) as userUpdated
-        FROM `ADV_TARGETFILTER` ftr
-        LEFT JOIN `IAM_USER` usrc ON usrc.id_iam_user = ftr.id_iam_user_created
-        LEFT JOIN `IAM_USER` usru ON usru.id_iam_user = ftr.id_iam_user_updated
-        LEFT JOIN `SND_ORGANIZATION` org ON org.id_snd_organization = ftr.id_snd_organization
-        LEFT JOIN `SND_ORGANIZATION_WORKPLACE` wrp ON wrp.id_snd_organization_workplace = ftr.id_snd_organization_workplace
-        LEFT JOIN `SND_EMPLOYMENT_STATUS` sts ON sts.id_snd_employment_status = ftr.id_snd_employment_status"
-      );
+      ->first();
   }
 
   public function create($data)
@@ -76,11 +58,6 @@ class TargetFilter extends Service
 
     // Set refs
     $loggedUser = $this->getService('iam/session')->getLoggedUser();
-
-    // Validation
-    // -- Communication
-    $adv = $this->getService('advertising/advertisement')->get(['id_adv_advertisement' => $data['id_adv_advertisement']]);
-    if (empty($adv)) throw new NotFound('Falha ao buscar pela campanha correspondente');
 
     // Set default value
     $data['id_iam_user_updated'] = empty($loggedUser) ? null : $loggedUser->id_iam_user;

@@ -13,6 +13,16 @@ class Advertisement extends Service
 {
   const ENTITY = "ADV_ADVERTISEMENT";
 
+  private $filterConfig = null;
+
+  public function __construct()
+  {
+    $this->filterConfig = json_decode(file_get_contents(dirname(__DIR__)) . "/config.json", true);
+    if (empty($this->filterConfig) || !isset($this->filterConfig['target']) || !isset($this->filterConfig['target']['fields'])) {
+      throw new Exception("Target Filters configuration not found.");
+    }
+  }
+
   public function list($params = [])
   {
     return $this->getDao(self::ENTITY)
@@ -22,7 +32,7 @@ class Advertisement extends Service
           adv.*,
           DATE_FORMAT(adv.dt_start, '%d/%m/%Y') as dtStart,
           DATE_FORMAT(adv.dt_next, '%d/%m/%Y') as dtNext
-        FROM `SND_COMMUNICATION` adv"
+        FROM `ADV_ADVERTISEMENT` adv"
       );
   }
 
@@ -129,8 +139,7 @@ class Advertisement extends Service
   public function send($adv)
   {
     // Build Filters and get Recipients:
-    $targetFilters = $this->buildFilters($adv->id_adv_advertisement);
-    $recipients = $this->getRecipients($targetFilters);
+    $recipients = $this->getRecipients($adv->id_adv_advertisement);
 
     // Execute each media channel's sending method:
     $this->getDao('ADV_MEDIACHANNEL')
@@ -153,26 +162,6 @@ class Advertisement extends Service
       );
 
     Utils::printLn("Campanha '$adv->id_adv_advertisement - $adv->ds_title' enviada com sucesso.\n");
-  }
-
-  public function validateAdvertisement($adv)
-  {
-    $todayDate = new DateTime();
-    $todayDate->setTime(0, 0, 0);
-    $ntfDate = new DateTime($adv->dt_next);
-    $ntfDate->setTime(0, 0, 0);
-
-    // -- Wrong day
-    if ($ntfDate != $todayDate) {
-      return false;
-    }
-
-    // -- Recurrence completed: no remaining repetitions.
-    if ($adv->do_type == 'R' && ($adv->nr_repeat_count === 0 || $adv->nr_repeat_count === '0')) {
-      return false;
-    }
-
-    return true;
   }
 
   public function updNextAdvertisementDate($adv)
@@ -215,30 +204,29 @@ class Advertisement extends Service
   }
 
   // ======= Private Methods =======
-
-  private function buildFilters($advertisementId)
+  private function buildParams($advertisementId)
   {
-    $stdCount = 0;
-    $ctmCount = 0;
-
     return [
-      'standard' => $this->buildStdFilters($advertisementId, $stdCount),
-      'custom' => $this->buildCustomFilters($advertisementId, $ctmCount),
-      'standardCount' => $stdCount,
-      'customCount' => $ctmCount,
+      ...$this->buildTargetFilters($advertisementId),
+      ...$this->buildCustomFilters($advertisementId)
     ];
   }
 
-  private function buildStdFilters($advertisementId, &$clausesCount)
+  private function buildTargetFilters($advertisementId)
   {
+    $filterConfig = $this->filterConfig['target']['fields'];
+
+    // Load Target Filters values for the given Advertisement:
     $filters = $this->getDao('ADV_TARGETFILTER')
       ->filter('id_adv_advertisement')->equalsTo($advertisementId)
       ->first();
+    $filters = json_decode($filters->tx_filters ?? '[]', true);
 
     if (empty($filters)) {
       throw new Exception("Cannot find advertisement filters for Advertisement $advertisementId");
     }
 
+    // Remove unwanted fields:
     $filters = $this->getService('utils/misc')->dataBlackList($filters, [
       'id_adv_targetfilter',
       'ds_key',
@@ -249,49 +237,24 @@ class Advertisement extends Service
       'id_adv_advertisement',
     ]);
 
-    // Construindo a cláusula WHERE
-    $clauses = [];
-
+    // Build Params
+    $params = [];
     foreach ($filters as $key => $value) {
       if (is_null($value)) continue;
 
-      switch ($key) {
-        case 'do_gender':
-        case 'id_snd_organization':
-        case 'id_snd_organization_workplace':
-        case 'id_snd_employment_status':
-          $escapedValue = addslashes($value);
-          $clauses[] = "$key = '$escapedValue'";
-          $clausesCount++;
-          break;
-        case 'dt_last_access':
-          $clauses[] = "usr.dt_last_access <= DATE_SUB(CURDATE(), INTERVAL $value DAY)";
-          $clausesCount++;
-          break;
-        case 'do_is_birthday':
-          if ($value == 'Y') {
-            $clauses[] = "MONTH(act.dt_birthday) = MONTH(CURDATE()) AND DAY(act.dt_birthday) = DAY(CURDATE())";
-            $clausesCount++;
-          }
-          break;
-        case 'nr_min_age':
-          $clauses[] = "act.dt_birthday <= DATE_SUB(CURDATE(), INTERVAL $value YEAR)";
-          $clausesCount++;
-          break;
-        case 'nr_max_age':
-          $clauses[] = "act.dt_birthday >= DATE_SUB(CURDATE(), INTERVAL $value YEAR)";
-          $clausesCount++;
-          break;
-      }
+      $fconfig = $filterConfig[$key] ?? null;
+      if (empty($fconfig)) continue;
+
+      $params[$key] = "{$fconfig['operator']}|$value";
     }
 
-    return empty($clauses) ? '1:1' : implode(' AND ', $clauses);
+    return $params;
   }
 
-  private function buildCustomFilters($communicationId, &$clausesCount)
+  private function buildCustomFilters($advertisementId)
   {
-    $filters = $this->getDao('SND_COMMUNICATION_CUSTOM')
-      ->filter('id_adv_advertisement')->equalsTo($communicationId)
+    $filters = $this->getDao('ADV_TARGETCUSTOMFILTER')
+      ->filter('id_adv_advertisement')->equalsTo($advertisementId)
       ->find();
 
     if (empty($filters)) {
@@ -310,6 +273,7 @@ class Advertisement extends Service
 
     // Build Filters
     $clauses = [];
+    $clausesCount = 0;
 
     foreach ($filters as $field) {
       if (is_null($field->tx_value)) continue;
@@ -318,40 +282,20 @@ class Advertisement extends Service
       $clausesCount++;
     }
 
-    return empty($clauses) ? null : implode(' OR ', $clauses);
+    $clauses = empty($clauses) ? '1=1' : implode(' OR ', $clauses);
+
+    $associateIds = $this->executeCustomClauses($clauses, $clausesCount);
+
+    return ['id_snd_associate' => '$in|' . implode('|', $associateIds)];
   }
 
-  private function getRecipients($clauses)
+  private function getRecipients($advertisementId)
   {
-    $where = $clauses['standard'];
+    $params = $this->buildParams($advertisementId);
 
-    if (!empty($clauses['custom'])) {
-      $associateIds = $this->executeCustomClauses($clauses['custom'], $clauses['customCount']);
-      if ($associateIds) {
-        $where .= " AND id_snd_associate IN ($associateIds)";
-      } else {
-        return [];
-      }
-    }
-
-    $sql =
-      "SELECT 
-        act.id_iam_user,
-        act.id_snd_associate,
-        act.id_snd_organization,
-        act.id_snd_organization_workplace,
-        act.id_snd_employment_status,
-        act.dt_birthday,
-        MONTH(act.dt_birthday) as birthMonth,
-        YEAR(act.dt_birthday) as birthYear,
-        act.do_gender,
-        usr.dt_last_access,
-        usr.ds_email
-      FROM `SND_ASSOCIATE` act
-      JOIN `IAM_USER` usr ON usr.id_iam_user = act.id_iam_user
-      WHERE $where";
-
-    return $this->getDao('SND_ASSOCIATE')->find($sql);
+    return $this->getDao($this->filterConfig['target']['entity'])
+      ->bindParams($params)
+      ->find($this->filterConfig['target']['query'] ?? null);
   }
 
   private function executeCustomClauses($clauses, $clausesCount)
@@ -373,44 +317,6 @@ class Advertisement extends Service
 
     $idList = array_column($this->getDao('STT_SETTINGS_CUSTOMFIELD_VALUE')->find($sql), 'id');
 
-    return empty($idList) ? null : implode(',', $idList);
-  }
-
-  private function sendAppCommunication($comm, $recipients)
-  {
-    $count = 0;
-
-    $notification = [
-      'ds_headline' => $comm->ds_title,
-      'ds_brief' => $comm->ds_brief,
-      'tx_content' => $comm->tx_content,
-      'id_iam_user_recipient' => null,
-    ];
-
-    foreach ($recipients as $associate) {
-      $notification['id_iam_user_recipient'] = $associate->id_iam_user;
-      $this->getService('messaging/notification')->create($notification);
-      $count++;
-    }
-
-    return $count;
-  }
-
-  private function sendEmailCommunication($comm, $recipients)
-  {
-    $count = 0;
-
-    $content = $comm->tx_content;
-    $subject = $comm->ds_title;
-
-    foreach ($recipients as $associate) {
-      $this->getService('utils/mail')
-        ->setSender(TENANT_NAME, 'comunicacao@sindiapp.app.br')
-        ->send($content, $associate->ds_email, $subject);
-
-      $count++;
-    }
-
-    return $count;
+    return empty($idList) ? [] : $idList;
   }
 }
