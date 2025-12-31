@@ -13,43 +13,14 @@ class CustomFilter extends Service
   {
     return $this->getDao(self::ENTITY)
       ->bindParams($params)
-      ->find(
-        "SELECT 
-          ftr.*,
-          cst.ds_fieldlabel,
-          CASE
-            WHEN cst.do_fieldtype = 'T' THEN 'text'
-            WHEN cst.do_fieldtype = 'N' THEN 'number'
-            ELSE 'text'
-          END as typeText,
-          -- Audit
-          DATE_FORMAT(ftr.dt_created, '%d/%m/%Y %T') as dtCreated, 
-          DATE_FORMAT(ftr.dt_updated, '%d/%m/%Y %T') as dtUpdated, 
-          CONCAT(usrc.ds_first_name, ' ', usrc.ds_last_name) as userCreated,
-          CONCAT(usru.ds_first_name, ' ', usru.ds_last_name) as userUpdated
-        FROM `ADV_TARGETCUSTOMFILTER` ftr
-        LEFT JOIN `IAM_USER` usrc ON usrc.id_iam_user = ftr.id_iam_user_created
-        LEFT JOIN `IAM_USER` usru ON usru.id_iam_user = ftr.id_iam_user_updated
-        JOIN STT_SETTINGS_CUSTOMFIELD cst ON cst.id_stt_settings_customfield = ftr.id_stt_settings_customfield"
-      );
+      ->find('advertising/customfilter/read');
   }
   
   public function get($params = [])
   {
     return $this->getDao(self::ENTITY)
       ->bindParams($params)
-      ->first(
-        "SELECT 
-          ftr.*,
-          -- Audit
-          DATE_FORMAT(ftr.dt_created, '%d/%m/%Y %T') as dtCreated, 
-          DATE_FORMAT(ftr.dt_updated, '%d/%m/%Y %T') as dtUpdated, 
-          CONCAT(usrc.ds_first_name, ' ', usrc.ds_last_name) as userCreated,
-          CONCAT(usru.ds_first_name, ' ', usru.ds_last_name) as userUpdated
-        FROM `ADV_TARGETCUSTOMFILTER` ftr
-        LEFT JOIN `IAM_USER` usrc ON usrc.id_iam_user = ftr.id_iam_user_created
-        LEFT JOIN `IAM_USER` usru ON usru.id_iam_user = ftr.id_iam_user_updated"
-      );
+      ->first('advertising/customfilter/read');
   }
 
   public function create($data)

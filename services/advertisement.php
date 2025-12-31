@@ -17,7 +17,7 @@ class Advertisement extends Service
 
   public function __construct()
   {
-    $this->filterConfig = json_decode(file_get_contents(dirname(__DIR__)) . "/config.json", true);
+    $this->filterConfig = json_decode(file_get_contents(dirname(__DIR__) . "/config.json"), true);
     if (empty($this->filterConfig) || !isset($this->filterConfig['target']) || !isset($this->filterConfig['target']['fields'])) {
       throw new Exception("Target Filters configuration not found.");
     }
@@ -27,39 +27,22 @@ class Advertisement extends Service
   {
     return $this->getDao(self::ENTITY)
       ->bindParams($params)
-      ->find(
-        "SELECT
-          adv.*,
-          DATE_FORMAT(adv.dt_start, '%d/%m/%Y') as dtStart,
-          DATE_FORMAT(adv.dt_next, '%d/%m/%Y') as dtNext
-        FROM `ADV_ADVERTISEMENT` adv"
-      );
+      ->find('advertising/advertisement/read');
   }
 
   public function get($params = [])
   {
-    return $this->getDao(self::ENTITY)
+    $adv = $this->getDao(self::ENTITY)
       ->bindParams($params)
-      ->first(
-        "SELECT 
-          adv.*,
-          DATE_FORMAT(adv.dt_start, '%d/%m/%Y %T') as dtStart,
-          DATE_FORMAT(adv.dt_end, '%d/%m/%Y %T') as dtEnd,
-          CASE
-            WHEN adv.do_interval = 'D' THEN 'Diariamente'
-            WHEN adv.do_interval = 'W' THEN 'Semanalmente'
-            WHEN adv.do_interval = 'M' THEN 'Mensalmente'
-            WHEN adv.do_interval = 'Y' THEN 'Anualmente' 
-          END intervalText,
-          -- Audit
-          DATE_FORMAT(adv.dt_created, '%d/%m/%Y %T') as dtCreated, 
-          DATE_FORMAT(adv.dt_updated, '%d/%m/%Y %T') as dtUpdated, 
-          CONCAT(usrc.ds_first_name, ' ', usrc.ds_last_name) as userCreated,
-          CONCAT(usru.ds_first_name, ' ', usru.ds_last_name) as userUpdated
-        FROM `ADV_ADVERTISEMENT` adv
-        LEFT JOIN `IAM_USER` usrc ON usrc.id_iam_user = adv.id_iam_user_created
-        LEFT JOIN `IAM_USER` usru ON usru.id_iam_user = adv.id_iam_user_updated"
-      );
+      ->first('advertising/advertisement/read');
+
+    if (empty($adv)) return null;
+
+    $adv->mediaChannels = $this->getDao('ADV_ADVERTISEMENT_MEDIACHANNEL')
+      ->filter('id_adv_advertisement')->equalsTo($adv->id_adv_advertisement)
+      ->fetch(fn(&$row) => $row = $row->id_adv_mediachannel);
+
+    return $adv;
   }
 
   public function create($data)
@@ -76,6 +59,8 @@ class Advertisement extends Service
 
     // Set refs
     $loggedUser = $this->getService('iam/session')->getLoggedUser();
+    $mediaChannels = $data['mediaChannels'] ?? [];
+    unset($data['mediaChannels']);
 
     // Validation
     $type = $data['do_type'];
@@ -88,7 +73,11 @@ class Advertisement extends Service
     $data['id_iam_user_created'] = empty($loggedUser) ? null : $loggedUser->id_iam_user;
     $data['dt_next'] = $data['dt_start'];
 
-    return $this->getDao(self::ENTITY)->insert($data);
+    $created = $this->getDao(self::ENTITY)->insert($data);
+
+    $this->handleMediaChannels($created, $mediaChannels);
+
+    return $created;
   }
 
   public function upd($params, $data)
@@ -104,11 +93,19 @@ class Advertisement extends Service
     ]);
 
     // Set refs
+    $adv = $this->get($params);
+    if (empty($adv))
+      throw new NotFound("Nenhuma campanha foi encontrada com os parâmetros informados.");
+    
     $loggedUser = $this->getService('iam/session')->getLoggedUser();
 
+    if (isset($data['mediaChannels'])) {
+      $mediaChannels = $data['mediaChannels'] ?? [];
+      unset($data['mediaChannels']);
+      $this->handleMediaChannels($adv, $mediaChannels);
+    }
+
     if (isset($data['dt_start'])) {
-      $adv = $this->get($params);
-      if (empty($adv)) throw new NotFound("Nenhuma campanha foi encontrada com os parâmetros informados.");
 
       if ($adv->dt_start != $data['dt_start']) {
         $data['dt_next'] = $data['dt_start'];
@@ -318,5 +315,28 @@ class Advertisement extends Service
     $idList = array_column($this->getDao('STT_SETTINGS_CUSTOMFIELD_VALUE')->find($sql), 'id');
 
     return empty($idList) ? [] : $idList;
+  }
+
+  private function handleMediaChannels($adv, $mediaChannels)
+  {
+    if (empty($mediaChannels) || !is_array($mediaChannels)) {
+      return;
+    }
+
+    $adv = (array) $adv;
+
+    // First, remove existing links:
+    $this->getDao('ADV_ADVERTISEMENT_MEDIACHANNEL')
+      ->filter('id_adv_advertisement')->equalsTo($adv['id_adv_advertisement'])
+      ->delete();
+
+    // Then, create new links:
+    foreach ($mediaChannels as $mediaChannelId) {
+      $this->getDao('ADV_ADVERTISEMENT_MEDIACHANNEL')
+        ->insert([
+          'id_adv_advertisement' => $adv['id_adv_advertisement'],
+          'id_adv_mediachannel' => $mediaChannelId,
+        ]);
+    }
   }
 }

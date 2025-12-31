@@ -14,12 +14,14 @@ class Advertising extends WebService
     'ADVERTISEMENT' => 'ADV_ADVERTISEMENT',
     'TARGETFILTER' => 'ADV_TARGETFILTER',
     'CUSTOMFILTER' => 'ADV_TARGETCUSTOMFILTER',
+    'MEDIACHANNEL' => 'ADV_MEDIACHANNEL',
   ];
 
   private const SERVICES = [
     'advertisement' => 'advertising/advertisement',
-    'customFilters' => 'advertising/customfilters',
-    'filters' => 'advertising/filters',
+    'customFilters' => 'advertising/customfilter',
+    'filters' => 'advertising/filter',
+    'mediaChannel' => 'advertising/media',
   ];
 
   public function init(): void
@@ -72,19 +74,18 @@ class Advertising extends WebService
       $adv = $this->getService(self::SERVICES['advertisement'])->create($data['input']);
 
       $filters = $data['filters'];
-      $filters['id_adv_advertisement'] = $adv->id_adv_advertisement;
 
       $custom = $data['custom'];
       foreach ($custom as $key => $field) {
         $customData = [
           'id_adv_advertisement' => $adv->id_adv_advertisement,
-          'id_stt_settings_customfield' => $field['id'],
+          'id_cst_customfield' => $field['id'],
           'tx_value' => $field['value']
         ];
         $this->getService(self::SERVICES['customFilters'])->create($customData);
       }
 
-      $this->getService(self::SERVICES['filters'])->create($filters);
+      $this->getService(self::SERVICES['filters'])->create($adv->id_adv_advertisement, $filters);
 
       return $this->response
         ->withStatus(201)
@@ -215,6 +216,19 @@ class Advertising extends WebService
       return $this->response
         ->withStatus(201)
         ->withData($this->getService(self::SERVICES['advertisement'])->send($adv));
+    });
+
+    //////////////////
+    // MEDIA CHANNELS:
+    //////////////////
+    $this->addEndpoint('GET', "/v1/media-channel", function ($params) {
+      $this->auth();
+
+      $list = $this->getService(self::SERVICES['mediaChannel'])->list($params);
+
+      return $this->response
+        ->withStatus(200)
+        ->withData($list);
     });
   }
 

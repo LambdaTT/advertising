@@ -12,28 +12,16 @@ class TargetFilter extends Service
   {
     return $this->getDao(self::ENTITY)
       ->bindParams($params)
-      ->find();
+      ->fetch(fn(&$row) => $row->tx_filters = json_decode($row->tx_filters));
   }
 
   public function get($params = [])
   {
-    return $this->getDao(self::ENTITY)
-      ->bindParams($params)
-      ->first();
+    return $this->list($params)[0] ?? null;
   }
 
-  public function create($data)
+  public function create($advId, $data)
   {
-    // Removes forbidden fields from $data:
-    $data = $this->getService('utils/misc')->dataBlackList($data, [
-      'id_adv_targetfilter',
-      'ds_key',
-      'id_iam_user_created',
-      'id_iam_user_updated',
-      'dt_created',
-      'dt_updated'
-    ]);
-
     // Set refs
     $loggedUser = $this->getService('iam/session')->getLoggedUser();
 
@@ -41,21 +29,14 @@ class TargetFilter extends Service
     $data['ds_key'] = 'ftr-' . uniqid();
     $data['id_iam_user_created'] = empty($loggedUser) ? null : $loggedUser->id_iam_user;
 
-    return $this->getDao(self::ENTITY)->insert($data);
+    return $this->getDao(self::ENTITY)->insert([
+      'id_adv_advertisement' => $advId,
+      'tx_filters' => json_encode($data)
+    ]);
   }
 
-  public function upd($params, $data)
+  public function upd($advId, $data)
   {
-    // Removes forbidden fields from $data:
-    $data = $this->getService('utils/misc')->dataBlackList($data, [
-      'id_adv_targetfilter',
-      'ds_key',
-      'id_iam_user_created',
-      'id_iam_user_updated',
-      'dt_created',
-      'dt_updated'
-    ]);
-
     // Set refs
     $loggedUser = $this->getService('iam/session')->getLoggedUser();
 
@@ -64,14 +45,16 @@ class TargetFilter extends Service
     $data['dt_updated'] = date("Y-m-d H:i:s");
 
     return $this->getDao(self::ENTITY)
-      ->bindParams($params)
-      ->update($data);
+      ->filter('id_adv_advertisement')->equalsTo($advId)
+      ->update([
+        'tx_filters' => json_encode($data)
+      ]);
   }
 
-  public function remove($params)
+  public function remove($advId)
   {
     return $this->getDao(self::ENTITY)
-      ->bindParams($params)
+      ->filter('id_adv_advertisement')->equalsTo($advId)
       ->delete();
   }
 }

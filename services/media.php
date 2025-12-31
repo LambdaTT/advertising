@@ -6,6 +6,15 @@ use SplitPHP\Service;
 
 class Media extends Service
 {
+  const ENTITY = "ADV_MEDIACHANNEL";
+
+  public function list($params = [])
+  {
+    return $this->getDao(self::ENTITY)
+      ->bindParams($params)
+      ->find();
+  }
+
   public function sendByEmail($adv, $recipients)
   {
     $count = 0;
