@@ -1,15 +1,14 @@
 {
     "target": {
         "entity": "[ENTITY NAME]",
-        "fields": [
-            {
-                "field1": {
-                    "name": "[FIELD NAME]",
-                    "type": "[FIELD TYPE]",
-                    "operator": "[COMPARISON OPERATOR]"
-                }
+        "primaryKey": "[PRIMARY KEY FIELD NAME]",
+        "fields": {
+            "field1": {
+                "name": "[FIELD NAME]",
+                "type": "[FIELD TYPE]",
+                "operator": "[COMPARISON OPERATOR]"
             }
-        ],
+        },
         "query": "[SQL QUERY TO RETRIEVE THE LIST OF RECIPIENTS]"
     }
 }

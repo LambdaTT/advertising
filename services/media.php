@@ -22,10 +22,10 @@ class Media extends Service
     $content = $adv->tx_content;
     $subject = $adv->ds_title;
 
-    foreach ($recipients as $associate) {
+    foreach ($recipients as $rcpnt) {
       $this->getService('utils/mail')
         ->setSender(TENANT_NAME, 'comunicacao@sindiapp.app.br')
-        ->send($content, $associate->ds_email, $subject);
+        ->send($content, $rcpnt->ds_email, $subject);
 
       $count++;
     }
@@ -44,8 +44,8 @@ class Media extends Service
       'id_iam_user_recipient' => null,
     ];
 
-    foreach ($recipients as $associate) {
-      $notification['id_iam_user_recipient'] = $associate->id_iam_user;
+    foreach ($recipients as $rcpnt) {
+      $notification['id_iam_user_recipient'] = $rcpnt->id_iam_user;
       $this->getService('messaging/notification')->create($notification);
       $count++;
     }

@@ -12,15 +12,15 @@ class Advertising extends Cli
 
   public function init()
   {
-    $this->addCommand('send', function () {
+    $this->addCommand('publish', function () {
       $advertisements = $this->getService(self::SERVICES['advertisement'])->list(['dt_next' => date('Y-m-d')]);
 
       foreach ($advertisements as $adv) {
         // Update
         $this->getService(self::SERVICES['advertisement'])->updNextAdvertisementDate($adv);
 
-        // Send
-        $this->getService(self::SERVICES['advertisement'])->send($adv);
+        // publish
+        $this->getService(self::SERVICES['advertisement'])->publish($adv);
       }
     });
   }

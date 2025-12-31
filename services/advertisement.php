@@ -96,7 +96,7 @@ class Advertisement extends Service
     $adv = $this->get($params);
     if (empty($adv))
       throw new NotFound("Nenhuma campanha foi encontrada com os parâmetros informados.");
-    
+
     $loggedUser = $this->getService('iam/session')->getLoggedUser();
 
     if (isset($data['mediaChannels'])) {
@@ -133,7 +133,7 @@ class Advertisement extends Service
       ->delete();
   }
 
-  public function send($adv)
+  public function publish($adv)
   {
     // Build Filters and get Recipients:
     $recipients = $this->getRecipients($adv->id_adv_advertisement);
@@ -157,8 +157,6 @@ class Advertisement extends Service
           JOIN `ADV_ADVERTISEMENT_MEDIACHANNEL` adm ON adm.id_adv_mediachannel = med.id_adv_mediachannel
           WHERE adm.id_adv_advertisement = ?adId?"
       );
-
-    Utils::printLn("Campanha '$adv->id_adv_advertisement - $adv->ds_title' enviada com sucesso.\n");
   }
 
   public function updNextAdvertisementDate($adv)
@@ -223,17 +221,6 @@ class Advertisement extends Service
       throw new Exception("Cannot find advertisement filters for Advertisement $advertisementId");
     }
 
-    // Remove unwanted fields:
-    $filters = $this->getService('utils/misc')->dataBlackList($filters, [
-      'id_adv_targetfilter',
-      'ds_key',
-      'dt_created',
-      'dt_updated',
-      'id_iam_user_created',
-      'id_iam_user_updated',
-      'id_adv_advertisement',
-    ]);
-
     // Build Params
     $params = [];
     foreach ($filters as $key => $value) {
@@ -254,9 +241,7 @@ class Advertisement extends Service
       ->filter('id_adv_advertisement')->equalsTo($advertisementId)
       ->find();
 
-    if (empty($filters)) {
-      return null;
-    }
+    if (empty($filters)) return [];
 
     $filters = $this->getService('utils/misc')->dataBlackList($filters, [
       'id_adv_advertisement_custom',
@@ -275,15 +260,17 @@ class Advertisement extends Service
     foreach ($filters as $field) {
       if (is_null($field->tx_value)) continue;
 
-      $clauses[] = "(id_stt_settings_customfield = '$field->id_stt_settings_customfield' AND tx_value = '$field->tx_value')";
+      $clauses[] = "(id_cst_customfield = '$field->id_cst_customfield' AND tx_value = '$field->tx_value')";
       $clausesCount++;
     }
 
     $clauses = empty($clauses) ? '1=1' : implode(' OR ', $clauses);
 
-    $associateIds = $this->executeCustomClauses($clauses, $clausesCount);
+    $targetIds = $this->executeCustomClauses($clauses, $clausesCount);
 
-    return ['id_snd_associate' => '$in|' . implode('|', $associateIds)];
+    return [
+      $this->filterConfig['target']['primaryKey'] => '$in|' . (empty($targetIds) ? '0' : implode('|', $targetIds))
+    ];
   }
 
   private function getRecipients($advertisementId)
@@ -305,14 +292,14 @@ class Advertisement extends Service
         filtered.id_reference_entity as id
       FROM (
         SELECT id_reference_entity
-        FROM `STT_SETTINGS_CUSTOMFIELD_VALUE`
+        FROM `CST_CUSTOMFIELD_VALUE`
         WHERE $clauses
       ) as filtered
       GROUP BY filtered.id_reference_entity
       HAVING COUNT(*) = $clausesCount
       ORDER BY id";
 
-    $idList = array_column($this->getDao('STT_SETTINGS_CUSTOMFIELD_VALUE')->find($sql), 'id');
+    $idList = array_column($this->getDao('CST_CUSTOMFIELD_VALUE')->find($sql), 'id');
 
     return empty($idList) ? [] : $idList;
   }

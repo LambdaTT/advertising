@@ -22,13 +22,6 @@ class TargetFilter extends Service
 
   public function create($advId, $data)
   {
-    // Set refs
-    $loggedUser = $this->getService('iam/session')->getLoggedUser();
-
-    // Set default value
-    $data['ds_key'] = 'ftr-' . uniqid();
-    $data['id_iam_user_created'] = empty($loggedUser) ? null : $loggedUser->id_iam_user;
-
     return $this->getDao(self::ENTITY)->insert([
       'id_adv_advertisement' => $advId,
       'tx_filters' => json_encode($data)
@@ -37,13 +30,6 @@ class TargetFilter extends Service
 
   public function upd($advId, $data)
   {
-    // Set refs
-    $loggedUser = $this->getService('iam/session')->getLoggedUser();
-
-    // Set default value
-    $data['id_iam_user_updated'] = empty($loggedUser) ? null : $loggedUser->id_iam_user;
-    $data['dt_updated'] = date("Y-m-d H:i:s");
-
     return $this->getDao(self::ENTITY)
       ->filter('id_adv_advertisement')->equalsTo($advId)
       ->update([

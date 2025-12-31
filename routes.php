@@ -92,7 +92,7 @@ class Advertising extends WebService
         ->withData($adv);
     });
 
-    $this->addEndpoint('PUT', "/v1/advertisement/?key?", function (Request $request) {
+    $this->addEndpoint('PUT', "/v1/advertisement/?key?", function ($key, Request $request) {
       // Auth user login:
       $this->auth([
         self::ENTITIES['ADVERTISEMENT'] => 'U'
@@ -100,8 +100,12 @@ class Advertising extends WebService
 
       $data = $request->getBody();
       $params = [
-        'ds_key' => $request->getRoute()->params['key']
+        'ds_key' => $key
       ];
+
+      // Retrieve existing advertisement
+      $adv = $this->getService(self::SERVICES['advertisement'])->get($params);
+      if (empty($adv)) throw new NotFound('Nenhuma campanha foi encontrada com os parâmetros fornecidos.');
 
       // Update Advertisement
       $rows = $this->getService(self::SERVICES['advertisement'])->upd($params, $data['input']);
@@ -109,7 +113,7 @@ class Advertising extends WebService
 
       // Update Filters
       $this->getService(self::SERVICES['filters'])
-        ->upd(['id_adv_advertisement' => $data['filters']['id_adv_advertisement']], $data['filters']);
+        ->upd(['id_adv_advertisement' => $adv->id_adv_advertisement], $data['filters']);
 
       // Update Custom
       foreach ($data['custom'] as $key => $field) {
@@ -215,7 +219,7 @@ class Advertising extends WebService
 
       return $this->response
         ->withStatus(201)
-        ->withData($this->getService(self::SERVICES['advertisement'])->send($adv));
+        ->withData($this->getService(self::SERVICES['advertisement'])->publish($adv));
     });
 
     //////////////////
