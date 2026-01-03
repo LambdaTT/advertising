@@ -210,9 +210,12 @@ class Advertisement extends Service
   private function buildTargetFilters($advertisementId)
   {
     // Load Target Filters values for the given Advertisement:
-    $filters = $this->getService('advertising/filters')->readFilters([
+    $filters = $this->getService('advertising/filter')->readFilters([
       'id_adv_advertisement' => $advertisementId
     ]);
+    $this->entity->name = $filters['entityName'];
+    $this->entity->pk = Dbmetadata::tbPrimaryKey($this->entity->name);
+    unset($filters['entityName']);
 
     if (empty($filters))
       throw new Exception("Cannot find advertisement filters for Advertisement $advertisementId");
@@ -221,7 +224,7 @@ class Advertisement extends Service
     $params = [];
     foreach ($filters as $key => $f)
       if ($f !== null && $f !== '') {
-        if (is_array($f) && count($f) >= 1 && isset($f[0]['serviceURI'])) {
+        if (is_array($f) && count($f) >= 1) {
           foreach ($f as $fc) {
             if (!isset($fc['serviceURI']) || !isset($fc['methodName']))
               continue;

@@ -26,9 +26,11 @@ class TargetFilter extends Service
     $filters = $this->get($params);
     if (empty($filters)) return null;
 
-    $result = [];
+    $result = [
+      'entityName' => $filters->ds_entity_name
+    ];
     foreach ($filters->tx_filters as $field => $value) {
-      if (($parses = $this->parseServiceCall($value)) !== $value){
+      if (($parses = $this->parseServiceCall($value)) !== $value) {
         $result[$field] = [];
         foreach ($parses as $call)
           $result[$field][] = [
@@ -36,23 +38,26 @@ class TargetFilter extends Service
             'methodName' => $call['methodName'],
             'methodParams' => $call['methodParams']
           ];
-        }
-      else $result[$field] = $value;
+      } else $result[$field] = $value;
     }
 
     return $result;
   }
 
   /**
-   * Parses a filter value with '$service', returning the service instance, the method name and an array of param values:
-   * @param string $value
-   * @return mixed [[serviceInstance, methodName, methodParams]] or the original value if not a service call
+   * Parses a filter value with '$service', returning the service URI, instance, the method name and an array of param values:
+   * @param mixed $filterValue
+   * @return mixed [[serviceInstance, methodName, methodParams]] or the original filterValue if not a service call
    */
-  public function parseServiceCall(string $value): mixed
+  public function parseServiceCall($filterValue): mixed
   {
-    if (!str_contains($value, '$service')) return $value;
+    if (!is_array($filterValue) && !str_contains($filterValue, '$service')) return $filterValue;
 
-    $services = array_filter(explode('&', $value));
+    if (is_array($filterValue))
+      $services = $filterValue;
+    else
+      $services = [$filterValue];
+
     $results = [];
     foreach ($services as $serviceCall) {
       $parts = explode('::', $serviceCall);
@@ -76,11 +81,12 @@ class TargetFilter extends Service
     return $results;
   }
 
-  public function create($advId, $data)
+  public function create($advId, $data, $targetEntityName)
   {
     return $this->getDao(self::ENTITY)->insert([
       'id_adv_advertisement' => $advId,
-      'tx_filters' => json_encode($data)
+      'tx_filters' => json_encode($data),
+      'ds_entity_name' => $targetEntityName
     ]);
   }
 

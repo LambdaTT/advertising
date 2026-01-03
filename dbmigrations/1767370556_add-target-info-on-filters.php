@@ -11,5 +11,8 @@ class AddTargetInfoOnFilters extends Migration
   {
     $this->Table('ADV_TARGETCUSTOMFILTER')
       ->string('ds_entity_name', 100);
+
+    $this->Table('ADV_TARGETFILTER')
+      ->string('ds_entity_name', 100);
   }
 }

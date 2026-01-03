@@ -62,7 +62,7 @@ class Advertising extends WebService
         ->withData($this->getService(self::SERVICES['advertisement'])->list($params));
     });
 
-    $this->addEndpoint('POST', '/v1/advertisement', function (Request $request) {
+    $this->addEndpoint('POST', '/v1/advertisement/?entityName?', function ($entityName, Request $request) {
       // Auth user login:
       $this->auth([
         self::ENTITIES['ADVERTISEMENT'] => 'C'
@@ -85,7 +85,7 @@ class Advertising extends WebService
         $this->getService(self::SERVICES['customFilters'])->create($customData);
       }
 
-      $this->getService(self::SERVICES['filters'])->create($adv->id_adv_advertisement, $filters);
+      $this->getService(self::SERVICES['filters'])->create($adv->id_adv_advertisement, $filters, $entityName);
 
       return $this->response
         ->withStatus(201)
