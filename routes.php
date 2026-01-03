@@ -146,22 +146,29 @@ class Advertising extends WebService
     // TARGET FILTERS ENDPOINTS:
     ////////////////////////////
 
-    // Get Fields
-    $this->addEndpoint('GET', "/v1/target-fields", function () {
+    // Get Filter Values
+    $this->addEndpoint('GET', "/v1/target-filters/values/?key?", function ($key) {
       // Auth user login:
-      $this->auth(execPermission: 'permission.advertising.view_target_fields');
+      $this->auth([
+        self::ENTITIES['TARGETFILTER'] => 'R'
+      ]);
 
-      $fields = json_decode(file_get_contents(__DIR__ . '/config.json'), true);
-      if (empty($fields) || !isset($fields['target']) || !isset($fields['target']['fields'])) {
-        throw new Exception("Target Filters configuration not found.");
-      }
+      $params = [
+        'ds_key' => $key
+      ];
+
+      $adv = $this->getService(self::SERVICES['advertisement'])->get($params);
+      if (empty($adv)) throw new NotFound("Não foi possível encontrar a campanha selecionada.");
+
+      $data = $this->getService(self::SERVICES['filters'])->readFilters(['id_adv_advertisement' => $adv->id_adv_advertisement]);
+      if (empty($data)) throw new NotFound("Nenhum filtro foi encontrado para a campanha selecionada.");
 
       return $this->response
         ->withStatus(200)
-        ->withData($fields['target']['fields']);
+        ->withData($data);
     });
 
-    // Get Values
+    // Get Filters
     $this->addEndpoint('GET', "/v1/target-filters/?advertisementKey?", function (Request $request) {
       // Auth user login:
       $this->auth([

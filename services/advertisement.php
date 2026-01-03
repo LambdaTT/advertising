@@ -3,9 +3,10 @@
 namespace Advertising\Services;
 
 use SplitPHP\Service;
-use SplitPHP\Utils;
 use SplitPHP\Exceptions\FailedValidation;
 use SplitPHP\Exceptions\NotFound;
+use SplitPHP\Database\Dbmetadata;
+use SplitPHP\Database\Database;
 use DateTime;
 use Exception;
 
@@ -13,14 +14,14 @@ class Advertisement extends Service
 {
   const ENTITY = "ADV_ADVERTISEMENT";
 
-  private $filterConfig = null;
+  private $entity;
 
   public function __construct()
   {
-    $this->filterConfig = json_decode(file_get_contents(dirname(__DIR__) . "/config.json"), true);
-    if (empty($this->filterConfig) || !isset($this->filterConfig['target']) || !isset($this->filterConfig['target']['fields'])) {
-      throw new Exception("Target Filters configuration not found.");
-    }
+    $this->entity = (object) [
+      'name' => null,
+      'pk' => null
+    ];
   }
 
   public function list($params = [])
@@ -65,7 +66,7 @@ class Advertisement extends Service
     // Validation
     $type = $data['do_type'];
     if (!in_array($type, ['U', 'I', 'R'])) {
-      throw new FailedValidation("Tipo de comunicação inválida.");
+      throw new FailedValidation("Tipo de campanha inválida.");
     }
 
     // Set default value
@@ -106,7 +107,6 @@ class Advertisement extends Service
     }
 
     if (isset($data['dt_start'])) {
-
       if ($adv->dt_start != $data['dt_start']) {
         $data['dt_next'] = $data['dt_start'];
       }
@@ -114,7 +114,7 @@ class Advertisement extends Service
 
     // Validation
     if (isset($data['do_type']) && !in_array($data['do_type'], ['U', 'I', 'R'])) {
-      throw new FailedValidation("Tipo de comunicação inválida.");
+      throw new FailedValidation("Tipo de campanha inválida.");
     }
 
     // Set default value
@@ -209,29 +209,33 @@ class Advertisement extends Service
 
   private function buildTargetFilters($advertisementId)
   {
-    $filterConfig = $this->filterConfig['target']['fields'];
-
     // Load Target Filters values for the given Advertisement:
-    $filters = $this->getDao('ADV_TARGETFILTER')
-      ->filter('id_adv_advertisement')->equalsTo($advertisementId)
-      ->first();
-    $filters = json_decode($filters->tx_filters ?? '[]', true);
+    $filters = $this->getService('advertising/filters')->readFilters([
+      'id_adv_advertisement' => $advertisementId
+    ]);
 
-    if (empty($filters)) {
+    if (empty($filters))
       throw new Exception("Cannot find advertisement filters for Advertisement $advertisementId");
-    }
 
     // Build Params
     $params = [];
-    foreach ($filters as $key => $value) {
-      if (is_null($value)) continue;
+    foreach ($filters as $key => $f)
+      if ($f !== null && $f !== '') {
+        if (is_array($f) && count($f) >= 1 && isset($f[0]['serviceURI'])) {
+          foreach ($f as $fc) {
+            if (!isset($fc['serviceURI']) || !isset($fc['methodName']))
+              continue;
 
-      $fconfig = $filterConfig[$key] ?? null;
-      if (empty($fconfig)) continue;
-
-      $params[$key] = "{$fconfig['operator']}|$value";
-    }
-
+            // Service Call
+            $method = $fc['methodName'];
+            $methodParams = $fc['methodParams'];
+            $params[$key][] = $this->getService($fc['serviceURI'])->{$method}(...$methodParams);
+          }
+        } else {
+          // Direct Value
+          $params[$key] = $f;
+        }
+      }
     return $params;
   }
 
@@ -253,7 +257,12 @@ class Advertisement extends Service
       'id_adv_advertisement',
     ]);
 
+    include CORE_PATH . "/database/" . Database::getRdbmsName() . "/class.dbmetadata.php";
+
     // Build Filters
+    $this->entity->name = $filters[0]->ds_entity_name;
+    $this->entity->pk = Dbmetadata::tbPrimaryKey($this->entity->name);
+
     $clauses = [];
     $clausesCount = 0;
 
@@ -269,7 +278,7 @@ class Advertisement extends Service
     $targetIds = $this->executeCustomClauses($clauses, $clausesCount);
 
     return [
-      $this->filterConfig['target']['primaryKey'] => '$in|' . (empty($targetIds) ? '0' : implode('|', $targetIds))
+      $this->entity->pk => '$in|' . (empty($targetIds) ? '0' : implode('|', $targetIds))
     ];
   }
 
@@ -277,9 +286,9 @@ class Advertisement extends Service
   {
     $params = $this->buildParams($advertisementId);
 
-    return $this->getDao($this->filterConfig['target']['entity'])
+    return $this->getDao($this->entity->name)
       ->bindParams($params)
-      ->find($this->filterConfig['target']['query'] ?? null);
+      ->find();
   }
 
   private function executeCustomClauses($clauses, $clausesCount)
