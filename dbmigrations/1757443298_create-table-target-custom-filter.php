@@ -11,8 +11,8 @@ class CreateTableTargetCustomFilter extends Migration
   {
     $this->Table('ADV_TARGETCUSTOMFILTER')
       ->id('id_adv_targetcustomfilter')
-      ->int('id_adv_advertisement')
-      ->int('id_stt_settings_customfield')
+      ->fk('id_adv_advertisement')
+      ->fk('id_stt_settings_customfield')
       ->text('tx_value')
       ->Foreign('id_adv_advertisement')->references('id_adv_advertisement')->atTable('ADV_ADVERTISEMENT')->onUpdate(DbVocab::FKACTION_CASCADE)->onDelete(DbVocab::FKACTION_CASCADE)
       ->Foreign('id_stt_settings_customfield')->references('id_stt_settings_customfield')->atTable('STT_SETTINGS_CUSTOMFIELD')->onUpdate(DbVocab::FKACTION_CASCADE)->onDelete(DbVocab::FKACTION_CASCADE);
