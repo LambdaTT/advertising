@@ -14,12 +14,14 @@ class Advertising extends WebService
     'ADVERTISEMENT' => 'ADV_ADVERTISEMENT',
     'TARGETFILTER' => 'ADV_TARGETFILTER',
     'CUSTOMFILTER' => 'ADV_TARGETCUSTOMFILTER',
+    'MEDIACHANNEL' => 'ADV_MEDIACHANNEL',
   ];
 
   private const SERVICES = [
     'advertisement' => 'advertising/advertisement',
-    'customFilters' => 'advertising/customfilters',
-    'filters' => 'advertising/filters',
+    'customFilters' => 'advertising/customfilter',
+    'filters' => 'advertising/filter',
+    'mediaChannel' => 'advertising/media',
   ];
 
   public function init(): void
@@ -60,7 +62,7 @@ class Advertising extends WebService
         ->withData($this->getService(self::SERVICES['advertisement'])->list($params));
     });
 
-    $this->addEndpoint('POST', '/v1/advertisement', function (Request $request) {
+    $this->addEndpoint('POST', '/v1/advertisement/?entityName?', function ($entityName, Request $request) {
       // Auth user login:
       $this->auth([
         self::ENTITIES['ADVERTISEMENT'] => 'C'
@@ -72,7 +74,6 @@ class Advertising extends WebService
       $adv = $this->getService(self::SERVICES['advertisement'])->create($data['input']);
 
       $filters = $data['filters'];
-      $filters['id_adv_advertisement'] = $adv->id_adv_advertisement;
 
       $custom = $data['custom'];
       foreach ($custom as $key => $field) {
@@ -84,14 +85,14 @@ class Advertising extends WebService
         $this->getService(self::SERVICES['customFilters'])->create($customData);
       }
 
-      $this->getService(self::SERVICES['filters'])->create($filters);
+      $this->getService(self::SERVICES['filters'])->create($adv->id_adv_advertisement, $filters, $entityName);
 
       return $this->response
         ->withStatus(201)
         ->withData($adv);
     });
 
-    $this->addEndpoint('PUT', "/v1/advertisement/?key?", function (Request $request) {
+    $this->addEndpoint('PUT', "/v1/advertisement/?key?", function ($key, Request $request) {
       // Auth user login:
       $this->auth([
         self::ENTITIES['ADVERTISEMENT'] => 'U'
@@ -99,8 +100,12 @@ class Advertising extends WebService
 
       $data = $request->getBody();
       $params = [
-        'ds_key' => $request->getRoute()->params['key']
+        'ds_key' => $key
       ];
+
+      // Retrieve existing advertisement
+      $adv = $this->getService(self::SERVICES['advertisement'])->get($params);
+      if (empty($adv)) throw new NotFound('Nenhuma campanha foi encontrada com os parâmetros fornecidos.');
 
       // Update Advertisement
       $rows = $this->getService(self::SERVICES['advertisement'])->upd($params, $data['input']);
@@ -108,7 +113,7 @@ class Advertising extends WebService
 
       // Update Filters
       $this->getService(self::SERVICES['filters'])
-        ->upd(['id_adv_advertisement' => $data['filters']['id_adv_advertisement']], $data['filters']);
+        ->upd(['id_adv_advertisement' => $adv->id_adv_advertisement], $data['filters']);
 
       // Update Custom
       foreach ($data['custom'] as $key => $field) {
@@ -141,22 +146,29 @@ class Advertising extends WebService
     // TARGET FILTERS ENDPOINTS:
     ////////////////////////////
 
-    // Get Fields
-    $this->addEndpoint('GET', "/v1/target-fields", function () {
+    // Get Filter Values
+    $this->addEndpoint('GET', "/v1/target-filters/values/?key?", function ($key) {
       // Auth user login:
-      $this->auth(execPermission: 'permission.advertising.view_target_fields');
+      $this->auth([
+        self::ENTITIES['TARGETFILTER'] => 'R'
+      ]);
 
-      $fields = json_decode(file_get_contents(__DIR__ . '/config.json'), true);
-      if (empty($fields) || !isset($fields['target']) || !isset($fields['target']['fields'])) {
-        throw new Exception("Target Filters configuration not found.");
-      }
+      $params = [
+        'ds_key' => $key
+      ];
+
+      $adv = $this->getService(self::SERVICES['advertisement'])->get($params);
+      if (empty($adv)) throw new NotFound("Não foi possível encontrar a campanha selecionada.");
+
+      $data = $this->getService(self::SERVICES['filters'])->readFilters(['id_adv_advertisement' => $adv->id_adv_advertisement]);
+      if (empty($data)) throw new NotFound("Nenhum filtro foi encontrado para a campanha selecionada.");
 
       return $this->response
         ->withStatus(200)
-        ->withData($fields['target']['fields']);
+        ->withData($data);
     });
 
-    // Get Values
+    // Get Filters
     $this->addEndpoint('GET', "/v1/target-filters/?advertisementKey?", function (Request $request) {
       // Auth user login:
       $this->auth([
@@ -214,7 +226,20 @@ class Advertising extends WebService
 
       return $this->response
         ->withStatus(201)
-        ->withData($this->getService(self::SERVICES['advertisement'])->send($adv));
+        ->withData($this->getService(self::SERVICES['advertisement'])->publish($adv));
+    });
+
+    //////////////////
+    // MEDIA CHANNELS:
+    //////////////////
+    $this->addEndpoint('GET', "/v1/media-channel", function ($params) {
+      $this->auth();
+
+      $list = $this->getService(self::SERVICES['mediaChannel'])->list($params);
+
+      return $this->response
+        ->withStatus(200)
+        ->withData($list);
     });
   }
 

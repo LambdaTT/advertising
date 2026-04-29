@@ -3,6 +3,7 @@
 namespace Advertising\Services;
 
 use SplitPHP\Service;
+use Throwable;
 
 class TargetFilter extends Service
 {
@@ -12,66 +13,96 @@ class TargetFilter extends Service
   {
     return $this->getDao(self::ENTITY)
       ->bindParams($params)
-      ->find();
+      ->fetch(fn(&$row) => $row->tx_filters = json_decode($row->tx_filters));
   }
 
   public function get($params = [])
   {
-    return $this->getDao(self::ENTITY)
-      ->bindParams($params)
-      ->first();
+    return $this->list($params)[0] ?? null;
   }
 
-  public function create($data)
+  public function readFilters($params)
   {
-    // Removes forbidden fields from $data:
-    $data = $this->getService('utils/misc')->dataBlackList($data, [
-      'id_adv_targetfilter',
-      'ds_key',
-      'id_iam_user_created',
-      'id_iam_user_updated',
-      'dt_created',
-      'dt_updated'
+    $filters = $this->get($params);
+    if (empty($filters)) return null;
+
+    $result = [
+      'entityName' => $filters->ds_entity_name
+    ];
+    foreach ($filters->tx_filters as $field => $value) {
+      if (($parses = $this->parseServiceCall($value)) !== $value) {
+        $result[$field] = [];
+        foreach ($parses as $call)
+          $result[$field][] = [
+            'serviceURI' => $call['serviceURI'],
+            'methodName' => $call['methodName'],
+            'methodParams' => $call['methodParams']
+          ];
+      } else $result[$field] = $value;
+    }
+
+    return $result;
+  }
+
+  /**
+   * Parses a filter value with '$service', returning the service URI, instance, the method name and an array of param values:
+   * @param mixed $filterValue
+   * @return mixed [[serviceInstance, methodName, methodParams]] or the original filterValue if not a service call
+   */
+  public function parseServiceCall($filterValue): mixed
+  {
+    if (!is_array($filterValue) && !str_contains($filterValue, '$service')) return $filterValue;
+
+    if (is_array($filterValue))
+      $services = $filterValue;
+    else
+      $services = [$filterValue];
+
+    $results = [];
+    foreach ($services as $serviceCall) {
+      $parts = explode('::', $serviceCall);
+      $serviceURI = str_replace('$service:', '', $parts[0]);
+      $methodPart = $parts[1];
+      preg_match('/(.*?)\((.*?)\)/', $methodPart, $matches);
+      $methodName = $matches[1];
+      $methodParams = [];
+      if (isset($matches[2]) && !empty($matches[2])) {
+        $methodParams = explode(',', $matches[2]);
+      }
+      $r = [
+        'serviceURI' => $serviceURI,
+        'methodName' => $methodName,
+        'methodParams' => $methodParams
+      ];
+
+      $results[] = $r;
+    }
+
+    return $results;
+  }
+
+  public function create($advId, $data, $targetEntityName)
+  {
+    return $this->getDao(self::ENTITY)->insert([
+      'id_adv_advertisement' => $advId,
+      'tx_filters' => json_encode($data),
+      'ds_entity_name' => $targetEntityName
     ]);
-
-    // Set refs
-    $loggedUser = $this->getService('iam/session')->getLoggedUser();
-
-    // Set default value
-    $data['ds_key'] = 'ftr-' . uniqid();
-    $data['id_iam_user_created'] = empty($loggedUser) ? null : $loggedUser->id_iam_user;
-
-    return $this->getDao(self::ENTITY)->insert($data);
   }
 
-  public function upd($params, $data)
+  public function upd($advId, $data)
   {
-    // Removes forbidden fields from $data:
-    $data = $this->getService('utils/misc')->dataBlackList($data, [
-      'id_adv_targetfilter',
-      'ds_key',
-      'id_iam_user_created',
-      'id_iam_user_updated',
-      'dt_created',
-      'dt_updated'
-    ]);
-
-    // Set refs
-    $loggedUser = $this->getService('iam/session')->getLoggedUser();
-
-    // Set default value
-    $data['id_iam_user_updated'] = empty($loggedUser) ? null : $loggedUser->id_iam_user;
-    $data['dt_updated'] = date("Y-m-d H:i:s");
-
     return $this->getDao(self::ENTITY)
-      ->bindParams($params)
-      ->update($data);
+      ->filter('id_adv_advertisement')->equalsTo($advId)
+      ->update([
+        'tx_filters' => json_encode($data)
+      ]);
   }
 
-  public function remove($params)
+  public function remove($advId)
   {
     return $this->getDao(self::ENTITY)
-      ->bindParams($params)
+      ->filter('id_adv_advertisement')->equalsTo($advId)
       ->delete();
   }
 }

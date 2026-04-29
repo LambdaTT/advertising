@@ -3,9 +3,10 @@
 namespace Advertising\Services;
 
 use SplitPHP\Service;
-use SplitPHP\Utils;
 use SplitPHP\Exceptions\FailedValidation;
 use SplitPHP\Exceptions\NotFound;
+use SplitPHP\Database\Dbmetadata;
+use SplitPHP\Database\Database;
 use DateTime;
 use Exception;
 
@@ -13,53 +14,36 @@ class Advertisement extends Service
 {
   const ENTITY = "ADV_ADVERTISEMENT";
 
-  private $filterConfig = null;
+  private $entity;
 
   public function __construct()
   {
-    $this->filterConfig = json_decode(file_get_contents(dirname(__DIR__)) . "/config.json", true);
-    if (empty($this->filterConfig) || !isset($this->filterConfig['target']) || !isset($this->filterConfig['target']['fields'])) {
-      throw new Exception("Target Filters configuration not found.");
-    }
+    $this->entity = (object) [
+      'name' => null,
+      'pk' => null
+    ];
   }
 
   public function list($params = [])
   {
     return $this->getDao(self::ENTITY)
       ->bindParams($params)
-      ->find(
-        "SELECT
-          adv.*,
-          DATE_FORMAT(adv.dt_start, '%d/%m/%Y') as dtStart,
-          DATE_FORMAT(adv.dt_next, '%d/%m/%Y') as dtNext
-        FROM `ADV_ADVERTISEMENT` adv"
-      );
+      ->find('advertising/advertisement/read');
   }
 
   public function get($params = [])
   {
-    return $this->getDao(self::ENTITY)
+    $adv = $this->getDao(self::ENTITY)
       ->bindParams($params)
-      ->first(
-        "SELECT 
-          adv.*,
-          DATE_FORMAT(adv.dt_start, '%d/%m/%Y %T') as dtStart,
-          DATE_FORMAT(adv.dt_end, '%d/%m/%Y %T') as dtEnd,
-          CASE
-            WHEN adv.do_interval = 'D' THEN 'Diariamente'
-            WHEN adv.do_interval = 'W' THEN 'Semanalmente'
-            WHEN adv.do_interval = 'M' THEN 'Mensalmente'
-            WHEN adv.do_interval = 'Y' THEN 'Anualmente' 
-          END intervalText,
-          -- Audit
-          DATE_FORMAT(adv.dt_created, '%d/%m/%Y %T') as dtCreated, 
-          DATE_FORMAT(adv.dt_updated, '%d/%m/%Y %T') as dtUpdated, 
-          CONCAT(usrc.ds_first_name, ' ', usrc.ds_last_name) as userCreated,
-          CONCAT(usru.ds_first_name, ' ', usru.ds_last_name) as userUpdated
-        FROM `ADV_ADVERTISEMENT` adv
-        LEFT JOIN `IAM_USER` usrc ON usrc.id_iam_user = adv.id_iam_user_created
-        LEFT JOIN `IAM_USER` usru ON usru.id_iam_user = adv.id_iam_user_updated"
-      );
+      ->first('advertising/advertisement/read');
+
+    if (empty($adv)) return null;
+
+    $adv->mediaChannels = $this->getDao('ADV_ADVERTISEMENT_MEDIACHANNEL')
+      ->filter('id_adv_advertisement')->equalsTo($adv->id_adv_advertisement)
+      ->fetch(fn(&$row) => $row = $row->id_adv_mediachannel);
+
+    return $adv;
   }
 
   public function create($data)
@@ -76,11 +60,13 @@ class Advertisement extends Service
 
     // Set refs
     $loggedUser = $this->getService('iam/session')->getLoggedUser();
+    $mediaChannels = $data['mediaChannels'] ?? [];
+    unset($data['mediaChannels']);
 
     // Validation
     $type = $data['do_type'];
     if (!in_array($type, ['U', 'I', 'R'])) {
-      throw new FailedValidation("Tipo de comunicação inválida.");
+      throw new FailedValidation("Tipo de campanha inválida.");
     }
 
     // Set default value
@@ -88,7 +74,11 @@ class Advertisement extends Service
     $data['id_iam_user_created'] = empty($loggedUser) ? null : $loggedUser->id_iam_user;
     $data['dt_next'] = $data['dt_start'];
 
-    return $this->getDao(self::ENTITY)->insert($data);
+    $created = $this->getDao(self::ENTITY)->insert($data);
+
+    $this->handleMediaChannels($created, $mediaChannels);
+
+    return $created;
   }
 
   public function upd($params, $data)
@@ -104,12 +94,19 @@ class Advertisement extends Service
     ]);
 
     // Set refs
+    $adv = $this->get($params);
+    if (empty($adv))
+      throw new NotFound("Nenhuma campanha foi encontrada com os parâmetros informados.");
+
     $loggedUser = $this->getService('iam/session')->getLoggedUser();
 
-    if (isset($data['dt_start'])) {
-      $adv = $this->get($params);
-      if (empty($adv)) throw new NotFound("Nenhuma campanha foi encontrada com os parâmetros informados.");
+    if (isset($data['mediaChannels'])) {
+      $mediaChannels = $data['mediaChannels'] ?? [];
+      unset($data['mediaChannels']);
+      $this->handleMediaChannels($adv, $mediaChannels);
+    }
 
+    if (isset($data['dt_start'])) {
       if ($adv->dt_start != $data['dt_start']) {
         $data['dt_next'] = $data['dt_start'];
       }
@@ -117,7 +114,7 @@ class Advertisement extends Service
 
     // Validation
     if (isset($data['do_type']) && !in_array($data['do_type'], ['U', 'I', 'R'])) {
-      throw new FailedValidation("Tipo de comunicação inválida.");
+      throw new FailedValidation("Tipo de campanha inválida.");
     }
 
     // Set default value
@@ -136,7 +133,7 @@ class Advertisement extends Service
       ->delete();
   }
 
-  public function send($adv)
+  public function publish($adv)
   {
     // Build Filters and get Recipients:
     $recipients = $this->getRecipients($adv->id_adv_advertisement);
@@ -160,8 +157,6 @@ class Advertisement extends Service
           JOIN `ADV_ADVERTISEMENT_MEDIACHANNEL` adm ON adm.id_adv_mediachannel = med.id_adv_mediachannel
           WHERE adm.id_adv_advertisement = ?adId?"
       );
-
-    Utils::printLn("Campanha '$adv->id_adv_advertisement - $adv->ds_title' enviada com sucesso.\n");
   }
 
   public function updNextAdvertisementDate($adv)
@@ -214,40 +209,36 @@ class Advertisement extends Service
 
   private function buildTargetFilters($advertisementId)
   {
-    $filterConfig = $this->filterConfig['target']['fields'];
-
     // Load Target Filters values for the given Advertisement:
-    $filters = $this->getDao('ADV_TARGETFILTER')
-      ->filter('id_adv_advertisement')->equalsTo($advertisementId)
-      ->first();
-    $filters = json_decode($filters->tx_filters ?? '[]', true);
-
-    if (empty($filters)) {
-      throw new Exception("Cannot find advertisement filters for Advertisement $advertisementId");
-    }
-
-    // Remove unwanted fields:
-    $filters = $this->getService('utils/misc')->dataBlackList($filters, [
-      'id_adv_targetfilter',
-      'ds_key',
-      'dt_created',
-      'dt_updated',
-      'id_iam_user_created',
-      'id_iam_user_updated',
-      'id_adv_advertisement',
+    $filters = $this->getService('advertising/filter')->readFilters([
+      'id_adv_advertisement' => $advertisementId
     ]);
+    $this->entity->name = $filters['entityName'];
+    $this->entity->pk = Dbmetadata::tbPrimaryKey($this->entity->name);
+    unset($filters['entityName']);
+
+    if (empty($filters))
+      throw new Exception("Cannot find advertisement filters for Advertisement $advertisementId");
 
     // Build Params
     $params = [];
-    foreach ($filters as $key => $value) {
-      if (is_null($value)) continue;
+    foreach ($filters as $key => $f)
+      if ($f !== null && $f !== '') {
+        if (is_array($f) && count($f) >= 1) {
+          foreach ($f as $fc) {
+            if (!isset($fc['serviceURI']) || !isset($fc['methodName']))
+              continue;
 
-      $fconfig = $filterConfig[$key] ?? null;
-      if (empty($fconfig)) continue;
-
-      $params[$key] = "{$fconfig['operator']}|$value";
-    }
-
+            // Service Call
+            $method = $fc['methodName'];
+            $methodParams = $fc['methodParams'];
+            $params[$key][] = $this->getService($fc['serviceURI'])->{$method}(...$methodParams);
+          }
+        } else {
+          // Direct Value
+          $params[$key] = $f;
+        }
+      }
     return $params;
   }
 
@@ -257,9 +248,7 @@ class Advertisement extends Service
       ->filter('id_adv_advertisement')->equalsTo($advertisementId)
       ->find();
 
-    if (empty($filters)) {
-      return null;
-    }
+    if (empty($filters)) return [];
 
     $filters = $this->getService('utils/misc')->dataBlackList($filters, [
       'id_adv_advertisement_custom',
@@ -271,7 +260,12 @@ class Advertisement extends Service
       'id_adv_advertisement',
     ]);
 
+    include CORE_PATH . "/database/" . Database::getRdbmsName() . "/class.dbmetadata.php";
+
     // Build Filters
+    $this->entity->name = $filters[0]->ds_entity_name;
+    $this->entity->pk = Dbmetadata::tbPrimaryKey($this->entity->name);
+
     $clauses = [];
     $clausesCount = 0;
 
@@ -284,18 +278,20 @@ class Advertisement extends Service
 
     $clauses = empty($clauses) ? '1=1' : implode(' OR ', $clauses);
 
-    $associateIds = $this->executeCustomClauses($clauses, $clausesCount);
+    $targetIds = $this->executeCustomClauses($clauses, $clausesCount);
 
-    return ['id_snd_associate' => '$in|' . implode('|', $associateIds)];
+    return [
+      $this->entity->pk => '$in|' . (empty($targetIds) ? '0' : implode('|', $targetIds))
+    ];
   }
 
   private function getRecipients($advertisementId)
   {
     $params = $this->buildParams($advertisementId);
 
-    return $this->getDao($this->filterConfig['target']['entity'])
+    return $this->getDao($this->entity->name)
       ->bindParams($params)
-      ->find($this->filterConfig['target']['query'] ?? null);
+      ->find();
   }
 
   private function executeCustomClauses($clauses, $clausesCount)
@@ -318,5 +314,28 @@ class Advertisement extends Service
     $idList = array_column($this->getDao('STT_SETTINGS_CUSTOMFIELD_VALUE')->find($sql), 'id');
 
     return empty($idList) ? [] : $idList;
+  }
+
+  private function handleMediaChannels($adv, $mediaChannels)
+  {
+    if (empty($mediaChannels) || !is_array($mediaChannels)) {
+      return;
+    }
+
+    $adv = (array) $adv;
+
+    // First, remove existing links:
+    $this->getDao('ADV_ADVERTISEMENT_MEDIACHANNEL')
+      ->filter('id_adv_advertisement')->equalsTo($adv['id_adv_advertisement'])
+      ->delete();
+
+    // Then, create new links:
+    foreach ($mediaChannels as $mediaChannelId) {
+      $this->getDao('ADV_ADVERTISEMENT_MEDIACHANNEL')
+        ->insert([
+          'id_adv_advertisement' => $adv['id_adv_advertisement'],
+          'id_adv_mediachannel' => $mediaChannelId,
+        ]);
+    }
   }
 }
