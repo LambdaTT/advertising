@@ -272,7 +272,7 @@ class Advertisement extends Service
     foreach ($filters as $field) {
       if (is_null($field->tx_value)) continue;
 
-      $clauses[] = "(id_stt_settings_customfield = '$field->id_stt_settings_customfield' AND tx_value = '$field->tx_value')";
+      $clauses[] = "(id_cst_customfield = '$field->id_cst_customfield' AND tx_value = '$field->tx_value')";
       $clausesCount++;
     }
 
@@ -304,14 +304,14 @@ class Advertisement extends Service
         filtered.id_reference_entity as id
       FROM (
         SELECT id_reference_entity
-        FROM `STT_SETTINGS_CUSTOMFIELD_VALUE`
+        FROM `CST_CUSTOMFIELD_VALUE`
         WHERE $clauses
       ) as filtered
       GROUP BY filtered.id_reference_entity
       HAVING COUNT(*) = $clausesCount
       ORDER BY id";
 
-    $idList = array_column($this->getDao('STT_SETTINGS_CUSTOMFIELD_VALUE')->find($sql), 'id');
+    $idList = array_column($this->getDao('CST_CUSTOMFIELD_VALUE')->find($sql), 'id');
 
     return empty($idList) ? [] : $idList;
   }

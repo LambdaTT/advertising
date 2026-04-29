@@ -79,7 +79,7 @@ class Advertising extends WebService
       foreach ($custom as $key => $field) {
         $customData = [
           'id_adv_advertisement' => $adv->id_adv_advertisement,
-          'id_stt_settings_customfield' => $field['id'],
+          'id_cst_customfield' => $field['id'],
           'tx_value' => $field['value']
         ];
         $this->getService(self::SERVICES['customFilters'])->create($customData);
