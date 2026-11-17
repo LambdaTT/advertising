@@ -79,7 +79,7 @@ class Advertising extends WebService
       foreach ($custom as $key => $field) {
         $customData = [
           'id_adv_advertisement' => $adv->id_adv_advertisement,
-          'id_cst_customfield' => $field['id'],
+          'id_stt_settings_customfield' => $field['id'],
           'tx_value' => $field['value']
         ];
         $this->getService(self::SERVICES['customFilters'])->create($customData);
@@ -252,9 +252,11 @@ class Advertising extends WebService
       throw new Unauthorized("Não autorizado.");
 
     // Validate user permissions:
-    if (!empty($tablePermissions))
-      $this->getService('iam/permission')
-        ->validatePermissions($tablePermissions);
+    // TODO(iam-refactor): entity/CRUD validatePermissions() was removed in the IAM
+    // permissions simplification. Re-enable via tag-based canExecute() once tags exist.
+    // if (!empty($tablePermissions))
+    //   $this->getService('iam/permission')
+    //     ->validatePermissions($tablePermissions);
 
     // Validate execution permissions:
     if (!empty($execPermission))

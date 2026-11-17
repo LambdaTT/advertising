@@ -1,0 +1,41 @@
+🧩 LambdaTT Advertising - Release Notes
+---
+
+📦 Version: 0.1.5
+📅 Release Date: 2026-11-17
+📄 License: MIT
+👤 Authors:
+  - Gabriel Valentoni Guelfi (https://github.com/gabriel-guelfi)
+
+---
+
+💬 Commentaries:
+
+Hotfix aligning this module with the IAM permissions-domain simplification (IAM v1.3.0), plus
+reverting an in-progress switch of target custom filters to the Customfields module — they
+remain bound to the Settings module's custom fields.
+
+---
+
+🔧 Fixed:
+
+    ▸ Disabled the entity/CRUD `iam/permission->validatePermissions()` call in the route auth
+      guard (commented out, kept as reference with a TODO). It referenced a method removed in the
+      IAM refactor and would otherwise throw an "undefined method" fatal on every guarded endpoint.
+      The existing tag-based `canExecute()` execution-permission check was left intact.
+
+---
+
+🗄️ Schema & custom filters:
+
+    ▸ Reverted the target custom-filter reference back to the Settings module's custom field.
+      `ADV_TARGETCUSTOMFILTER` stays bound to `id_stt_settings_customfield`
+      (→ `STT_SETTINGS_CUSTOMFIELD`), and value matching reads from
+      `STT_SETTINGS_CUSTOMFIELD_VALUE`.
+
+    ▸ Dropped the in-progress switch to the Customfields module: removed migration
+      `1767149732_change-custom-filter-ref-table.php` and reverted the `id_cst_customfield` /
+      `CST_CUSTOMFIELD_VALUE` references in `routes.php` and `services/advertisement.php` back to
+      their `stt` equivalents. Schema and code are now consistent on `id_stt_settings_customfield`.
+
+---
