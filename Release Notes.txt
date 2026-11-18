@@ -22,7 +22,7 @@ remain bound to the Settings module's custom fields.
     ▸ Disabled the entity/CRUD `iam/permission->validatePermissions()` call in the route auth
       guard (commented out, kept as reference with a TODO). It referenced a method removed in the
       IAM refactor and would otherwise throw an "undefined method" fatal on every guarded endpoint.
-      The existing tag-based `canExecute()` execution-permission check was left intact.
+      The existing tag-based `requireAny()` execution-permission check was left intact.
 
 ---
 
