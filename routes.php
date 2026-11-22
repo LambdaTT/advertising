@@ -6,16 +6,27 @@ use SplitPHP\WebService;
 use SplitPHP\Request;
 use SplitPHP\Exceptions\Unauthorized;
 use SplitPHP\Exceptions\NotFound;
+use SplitPHP\ModsManager;
 use Exception;
 
 class Advertising extends WebService
 {
-  private const ENTITIES = [
-    'ADVERTISEMENT' => 'ADV_ADVERTISEMENT',
-    'TARGETFILTER' => 'ADV_TARGETFILTER',
-    'CUSTOMFILTER' => 'ADV_TARGETCUSTOMFILTER',
-    'MEDIACHANNEL' => 'ADV_MEDIACHANNEL',
+  private const PERMISSIONS = [
+    'advertisement' => [
+      'read'    => 'advertising.advertisement.read',
+      'manage'  => 'advertising.advertisement.manage'
+    ],
+    'targetfilter' => [
+      'read'    => 'advertising.targetfilter.read',
+      'manage'  => 'advertising.targetfilter.manage'
+    ],
+    'customfilter' => [
+      'read'    => 'advertising.customfilter.read',
+      'manage'  => 'advertising.customfilter.manage'
+    ],
   ];
+
+  private const PUBLISH_PERMISSION = 'advertising.advertisement.publish';
 
   private const SERVICES = [
     'advertisement' => 'advertising/advertisement',
@@ -33,9 +44,7 @@ class Advertising extends WebService
     ///////////////////////////
     $this->addEndpoint('GET', "/v1/advertisement/?key?", function (Request $request) {
       // Auth:
-      $this->auth([
-        self::ENTITIES['ADVERTISEMENT'] => 'R'
-      ]);
+      $this->auth(self::PERMISSIONS['advertisement']);
 
       $params = [
         'ds_key' => $request->getRoute()->params['key']
@@ -51,9 +60,7 @@ class Advertising extends WebService
 
     $this->addEndpoint('GET', '/v1/advertisement', function (Request $request) {
       // Auth user login:
-      $this->auth([
-        self::ENTITIES['ADVERTISEMENT'] => 'R'
-      ]);
+      $this->auth(self::PERMISSIONS['advertisement']);
 
       $params = $request->getBody();
 
@@ -64,9 +71,7 @@ class Advertising extends WebService
 
     $this->addEndpoint('POST', '/v1/advertisement/?entityName?', function ($entityName, Request $request) {
       // Auth user login:
-      $this->auth([
-        self::ENTITIES['ADVERTISEMENT'] => 'C'
-      ]);
+      $this->auth(self::PERMISSIONS['advertisement']['manage']);
 
       $data = $request->getBody();
 
@@ -94,9 +99,7 @@ class Advertising extends WebService
 
     $this->addEndpoint('PUT', "/v1/advertisement/?key?", function ($key, Request $request) {
       // Auth user login:
-      $this->auth([
-        self::ENTITIES['ADVERTISEMENT'] => 'U'
-      ]);
+      $this->auth(self::PERMISSIONS['advertisement']['manage']);
 
       $data = $request->getBody();
       $params = [
@@ -127,9 +130,7 @@ class Advertising extends WebService
 
     $this->addEndpoint('DELETE', "/v1/advertisement/?key?", function (Request $request) {
       // Auth user login:
-      $this->auth([
-        self::ENTITIES['ADVERTISEMENT'] => 'D'
-      ]);
+      $this->auth(self::PERMISSIONS['advertisement']['manage']);
 
       $params = [
         'ds_key' => $request->getRoute()->params['key']
@@ -149,9 +150,7 @@ class Advertising extends WebService
     // Get Filter Values
     $this->addEndpoint('GET', "/v1/target-filters/values/?key?", function ($key) {
       // Auth user login:
-      $this->auth([
-        self::ENTITIES['TARGETFILTER'] => 'R'
-      ]);
+      $this->auth(self::PERMISSIONS['targetfilter']);
 
       $params = [
         'ds_key' => $key
@@ -171,9 +170,7 @@ class Advertising extends WebService
     // Get Filters
     $this->addEndpoint('GET', "/v1/target-filters/?advertisementKey?", function (Request $request) {
       // Auth user login:
-      $this->auth([
-        self::ENTITIES['TARGETFILTER'] => 'R'
-      ]);
+      $this->auth(self::PERMISSIONS['targetfilter']);
 
       $params = [
         'ds_key' => $request->getRoute()->params['advertisementKey']
@@ -192,9 +189,7 @@ class Advertising extends WebService
     // Get Values
     $this->addEndpoint('GET', "/v1/target-custom-filters/?advertisementKey?", function (Request $request) {
       // Auth user login:
-      $this->auth([
-        self::ENTITIES['CUSTOMFILTER'] => 'R'
-      ]);
+      $this->auth(self::PERMISSIONS['customfilter']);
 
       $params = [
         'ds_key' => $request->getRoute()->params['advertisementKey']
@@ -215,7 +210,7 @@ class Advertising extends WebService
     //////////////////
     $this->addEndpoint('POST', "/v1/publish/?key?", function (Request $request) {
       // Auth user login:
-      $this->auth(execPermission: 'permission.advertising.publish');
+      $this->auth(self::PUBLISH_PERMISSION);
 
       $params = [
         'ds_key' => $request->getRoute()->params['key']
@@ -243,24 +238,16 @@ class Advertising extends WebService
     });
   }
 
-  private function auth(array $tablePermissions = [], ?string $execPermission = null)
+  private function auth(array|string $permissions = [])
   {
-    if (!$this->getService('modcontrol/control')->moduleExists('iam')) return;
+    if (!ModsManager::modExists('iam')) return;
 
     // Auth user login:
     if (!$this->getService('iam/session')->authenticate())
       throw new Unauthorized("Não autorizado.");
 
     // Validate user permissions:
-    // TODO(iam-refactor): entity/CRUD validatePermissions() was removed in the IAM
-    // permissions simplification. Re-enable via tag-based requireAny() once tags exist.
-    // if (!empty($tablePermissions))
-    //   $this->getService('iam/permission')
-    //     ->validatePermissions($tablePermissions);
-
-    // Validate execution permissions:
-    if (!empty($execPermission))
-      $this->getService('iam/permission')
-        ->requireAny($execPermission);
+    if (!empty($permissions))
+      $this->getService('iam/permission')->requireAny($permissions);
   }
 }
