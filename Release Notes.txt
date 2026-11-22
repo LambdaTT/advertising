@@ -2,7 +2,7 @@
 ---
 
 📦 Version: 0.1.5
-📅 Release Date: 2026-11-17
+📅 Release Date: 2026-11-22
 📄 License: MIT
 👤 Authors:
   - Gabriel Valentoni Guelfi (https://github.com/gabriel-guelfi)
@@ -11,18 +11,28 @@
 
 💬 Commentaries:
 
-Hotfix aligning this module with the IAM permissions-domain simplification (IAM v1.3.0), plus
-reverting an in-progress switch of target custom filters to the Customfields module — they
-remain bound to the Settings module's custom fields.
+Aligns this module with the IAM permissions-domain simplification (IAM v1.3.0) by adopting the
+tag-based permissioning standard, and reverts an in-progress switch of target custom filters to
+the Customfields module — they remain bound to the Settings module's custom fields.
 
 ---
 
-🔧 Fixed:
+✨ Added:
 
-    ▸ Disabled the entity/CRUD `iam/permission->validatePermissions()` call in the route auth
-      guard (commented out, kept as reference with a TODO). It referenced a method removed in the
-      IAM refactor and would otherwise throw an "undefined method" fatal on every guarded endpoint.
-      The existing tag-based `requireAny()` execution-permission check was left intact.
+    ▸ Seed `dbseeds/1795316450_advertising-permissions.php`, registering the module's permission
+      tags in `IAM_PERMISSION`: `advertising.advertisement.read` / `.manage` / `.publish`,
+      `advertising.targetfilter.read` / `.manage` and `advertising.customfilter.read` / `.manage`.
+
+---
+
+🔧 Changed:
+
+    ▸ Replaced the entity/CRUD permission codes (`ADV_*` R/C/U/D) with tag-based permissions
+      enforced via `iam/permission->requireAny()`. Read endpoints accept either the entity's
+      `.read` or `.manage` tag; write endpoints require `.manage`; the publish endpoint requires
+      `advertising.advertisement.publish`. The media-channel listing stays authentication-only.
+
+    ▸ Module presence is now checked via `ModsManager::modExists('iam')`.
 
 ---
 
